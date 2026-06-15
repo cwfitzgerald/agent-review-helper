@@ -18,6 +18,12 @@ It creates a `jj` workspace at the PR head and gathers, into
 - `README.md` — a manifest tying it together, plus the workspace path for building
   / navigating the full checkout.
 
+When you're done, tear down the workspace and bundle:
+
+```
+agent-review-helper 8967 --clean
+```
+
 It pairs with a Claude Code skill (`agent-review`) that runs the binary and reviews
 from the bundle.
 
@@ -31,8 +37,9 @@ Add `--force` to update an existing install to the latest.
 
 ## Requirements
 
-- [`jj`](https://github.com/jj-vcs/jj) — the target must be a jj repo whose
-  `origin` points at the PR's GitHub repo.
+- [`jj`](https://github.com/jj-vcs/jj) — the target must be a jj repo with a
+  remote pointing at the PR's GitHub repo. The base remote is auto-detected
+  (`origin`, else `upstream`, else the sole remote); override with `--remote`.
 - [`gh`](https://cli.github.com/) — authenticated, for PR metadata and diffs.
 
 ## Status

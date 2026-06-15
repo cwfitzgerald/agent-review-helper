@@ -29,16 +29,31 @@ fn run(args: &Cli) -> Result<()> {
     let cwd = std::env::current_dir().context("reading current directory")?;
 
     // 1. Discover the target repo + its GitHub identity.
-    let target = repo::discover(&cwd, args.repo.as_deref())?;
+    let target = repo::discover(&cwd, args.repo.as_deref(), args.remote.as_deref())?;
     let slug = target.origin.slug();
-    step(&format!("repo: {slug} (root {})", target.root.display()));
+    step(&format!(
+        "repo: {slug} via `{}` (root {})",
+        target.remote,
+        target.root.display()
+    ));
+
+    // 1a. `--clean`: tear down this PR's workspace + artifacts and stop.
+    if args.clean {
+        let layout = Layout::resolve(args.storage, &target.root, &target.origin, args.pr)?;
+        if workspace::clean(&layout, &target.root, args.pr)? {
+            println!("Cleaned PR #{} ({}).", args.pr, slug);
+        } else {
+            println!("Nothing to clean for PR #{} ({}).", args.pr, slug);
+        }
+        return Ok(());
+    }
 
     // 2. Update trunk so `jj pr-diff`'s fork point is accurate.
     if args.no_fetch {
-        step("skipping origin fetch (--no-fetch)");
+        step(&format!("skipping `{}` fetch (--no-fetch)", target.remote));
     } else {
-        step("fetching origin");
-        jj::fetch(&target.root, "origin", None)?;
+        step(&format!("fetching `{}`", target.remote));
+        jj::fetch(&target.root, &target.remote, None)?;
     }
 
     // 3. Resolve PR metadata.
@@ -101,10 +116,10 @@ fn fetch_pr_head(target: &repo::TargetRepo, pr: &gh::PrInfo) -> Result<String> {
             Ok(format!("{}@{}", pr.head_ref_name, owner))
         }
         _ => {
-            // Same-repo PR (or unknown fork owner): the branch is on origin.
-            step(&format!("fetching `{}` from origin", pr.head_ref_name));
-            jj::fetch(&target.root, "origin", Some(&pr.head_ref_name))?;
-            Ok(format!("{}@origin", pr.head_ref_name))
+            // Same-repo PR (or unknown fork owner): the branch is on the base remote.
+            step(&format!("fetching `{}` from `{}`", pr.head_ref_name, target.remote));
+            jj::fetch(&target.root, &target.remote, Some(&pr.head_ref_name))?;
+            Ok(format!("{}@{}", pr.head_ref_name, target.remote))
         }
     }
 }

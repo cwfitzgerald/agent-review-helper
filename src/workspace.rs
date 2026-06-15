@@ -76,6 +76,21 @@ pub fn prepare(layout: &Layout, repo_root: &Path, pr: u64, force: bool) -> Resul
     Ok(())
 }
 
+/// Remove this PR's folders + jj workspace if they exist. Returns whether
+/// anything was actually removed (so the CLI can report a no-op).
+pub fn clean(layout: &Layout, repo_root: &Path, pr: u64) -> Result<bool> {
+    let name = workspace_name(pr);
+    let had_workspace = jj::workspace_names(repo_root)
+        .map(|names| names.iter().any(|n| n == &name))
+        .unwrap_or(false);
+    let had_files = layout.exists() || layout.workspace.exists();
+    if !had_workspace && !had_files {
+        return Ok(false);
+    }
+    teardown(layout, repo_root, pr)?;
+    Ok(true)
+}
+
 /// Remove a prior PR folder + jj workspace.
 fn teardown(layout: &Layout, repo_root: &Path, pr: u64) -> Result<()> {
     let name = workspace_name(pr);

@@ -18,11 +18,20 @@ pub struct Cli {
     #[arg(long)]
     pub force: bool,
 
-    /// Skip `jj git fetch` of origin (use already-fetched state).
+    /// Remove this PR's workspace + artifacts (and forget the jj workspace), then exit.
+    #[arg(long)]
+    pub clean: bool,
+
+    /// Skip `jj git fetch` of the base remote (use already-fetched state).
     #[arg(long)]
     pub no_fetch: bool,
 
-    /// Override the GitHub repo as `owner/repo` instead of deriving from origin.
+    /// Name of the base remote (the PR's upstream). Defaults to `origin`, then
+    /// `upstream`, then the sole remote if there is exactly one.
+    #[arg(long)]
+    pub remote: Option<String>,
+
+    /// Override the GitHub repo as `owner/repo` instead of deriving from the base remote.
     #[arg(long)]
     pub repo: Option<String>,
 

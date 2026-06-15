@@ -13,27 +13,23 @@ pub fn workspace_root(cwd: &Path) -> Result<PathBuf> {
     Ok(PathBuf::from(out.trim()))
 }
 
-/// URL of remote `name`, parsed from `jj git remote list`.
-pub fn remote_url(root: &Path, name: &str) -> Result<String> {
-    let listing = run("jj", &["git", "remote", "list"], Some(root))?;
-    for line in listing.lines() {
-        let mut parts = line.split_whitespace();
-        if parts.next() == Some(name) {
-            if let Some(url) = parts.next() {
-                return Ok(url.to_string());
-            }
-        }
-    }
-    anyhow::bail!("remote `{name}` not found in `jj git remote list`");
-}
-
 /// Whether a remote with `name` already exists.
 pub fn remote_exists(root: &Path, name: &str) -> Result<bool> {
+    Ok(remotes(root)?.iter().any(|(n, _)| n == name))
+}
+
+/// All configured remotes as `(name, url)` pairs, from `jj git remote list`.
+pub fn remotes(root: &Path) -> Result<Vec<(String, String)>> {
     let listing = run("jj", &["git", "remote", "list"], Some(root))?;
     Ok(listing
         .lines()
-        .filter_map(|l| l.split_whitespace().next())
-        .any(|n| n == name))
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let name = parts.next()?;
+            let url = parts.next()?;
+            Some((name.to_string(), url.to_string()))
+        })
+        .collect())
 }
 
 /// Add a git remote.

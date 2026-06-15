@@ -34,6 +34,9 @@ agent-review-helper <PR>
 - It prints `info:` and `workspace:` paths on success — note them.
 - If it reports the bundle already exists and the user wants a fresh pull, re-run
   with `--force`. Otherwise reuse the existing bundle (do not re-run).
+- It auto-detects the PR's base remote (`origin`, else `upstream`, else the sole
+  remote). If it reports the base remote is ambiguous, re-run with
+  `--remote <name>` naming the upstream remote (e.g. `--remote upstream`).
 - It uses read-only `gh` and `jj git fetch` / `jj workspace add`; it does **not**
   commit anything. If it fails, surface the exact error — do not fall back to
   manual gathering without telling the user.
@@ -99,8 +102,20 @@ cargo install --git https://github.com/cwfitzgerald/agent-review-helper --locked
 `cargo install` places it in `~/.cargo/bin`, which must be on PATH. Run the same
 command to update to the latest after the tool changes.
 
+## Cleaning up
+
+When the user is done with a PR, tear down its workspace + artifacts:
+
+```
+agent-review-helper <PR> --clean
+```
+
+This forgets the jj workspace and removes the bundle folder. It does no network
+or `gh` calls and is idempotent (a second `--clean` is a no-op). Fork remotes the
+tool added are left in place (harmless and reused on future runs).
+
 ## Notes
 
-- The tool needs to run inside a jj repo whose `origin` points at the PR's repo.
-  If the user is in the wrong directory, say so.
+- The tool needs to run inside a jj repo with a remote pointing at the PR's base
+  repo (`origin` or `upstream`). If the user is in the wrong directory, say so.
 - To inspect a different PR, just run the tool again with that number.
