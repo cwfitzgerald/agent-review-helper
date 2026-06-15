@@ -62,6 +62,7 @@ fn run(args: &Cli) -> Result<()> {
     let ctx = ReviewContext {
         pr: args.pr,
         repo: target.origin,
+        repo_root: target.root,
         layout,
         pr_info,
     };

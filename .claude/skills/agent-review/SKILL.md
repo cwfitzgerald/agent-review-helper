@@ -52,6 +52,14 @@ The bundle (default `.agent-review/pr-<n>/info/`) contains:
 - The full PR is checked out at the `workspace:` path for building, running
   tests, or navigating surrounding code.
 
+**Building / testing in the workspace:** always set `CARGO_TARGET_DIR` to the
+root repo's `target/` dir so cargo reuses already-built dependencies instead of
+recompiling everything. The exact value is in the bundle `README.md` under
+"Building / testing in the workspace". Set it on every `cargo` /
+`cargo nextest` / `cargo clippy` call — e.g. PowerShell
+`$env:CARGO_TARGET_DIR='<root>/target'; cargo nextest run`, or bash
+`CARGO_TARGET_DIR=<root>/target cargo build`.
+
 ## Step 2 — Review
 
 Read `README.md`, then `conversation.md`, then `pr-diff.diff`. Read from these

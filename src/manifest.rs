@@ -45,6 +45,29 @@ pub fn write(ctx: &ReviewContext, produced: &[Produced]) -> Result<()> {
          off (e.g. trunk moved)."
     )
     .ok();
+    writeln!(out).ok();
+
+    writeln!(out, "## Building / testing in the workspace").ok();
+    writeln!(out).ok();
+    writeln!(
+        out,
+        "When you run cargo in the workspace, set `CARGO_TARGET_DIR` to the root repo's \
+         target dir so dependencies aren't recompiled from scratch:"
+    )
+    .ok();
+    writeln!(out).ok();
+    let target = ctx.shared_target_dir();
+    writeln!(out, "```").ok();
+    writeln!(out, "CARGO_TARGET_DIR={}", target.display()).ok();
+    writeln!(out, "```").ok();
+    writeln!(out).ok();
+    writeln!(
+        out,
+        "Set it on every build/test/clippy invocation (PowerShell: \
+         `$env:CARGO_TARGET_DIR='{}'`).",
+        target.display()
+    )
+    .ok();
 
     let file = ctx.layout.info.join("README.md");
     fs::write(&file, out).with_context(|| format!("writing {}", file.display()))?;
