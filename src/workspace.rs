@@ -8,9 +8,11 @@ use std::path::{Path, PathBuf};
 use crate::jj;
 use crate::layout::{Layout, Storage};
 
-/// Deterministic jj workspace name for a PR, so `--force` can forget it.
-pub fn workspace_name(pr: u64) -> String {
-    format!("arh-pr-{pr}")
+/// Deterministic jj workspace name for a bundle, so `--force`/`--clean` can
+/// forget it. `bundle` is the per-change folder id (e.g. `pr-9464`,
+/// `range-<from>-<to>`), giving names like `arh-pr-9464`.
+pub fn workspace_name(bundle: &str) -> String {
+    format!("arh-{bundle}")
 }
 
 /// Ensure `.agent-review/` is ignored by both git and jj, so the parent
@@ -58,7 +60,7 @@ fn git_exclude_path(repo_root: &Path) -> Option<PathBuf> {
 
 /// Prepare the artifact folders, handling `--force` by removing prior state
 /// (including forgetting the jj workspace). Returns after `info/` exists.
-pub fn prepare(layout: &Layout, repo_root: &Path, pr: u64, force: bool) -> Result<()> {
+pub fn prepare(layout: &Layout, repo_root: &Path, ws_name: &str, force: bool) -> Result<()> {
     if layout.exists() {
         if !force {
             anyhow::bail!(
@@ -66,7 +68,7 @@ pub fn prepare(layout: &Layout, repo_root: &Path, pr: u64, force: bool) -> Resul
                 layout.roots[0].display()
             );
         }
-        teardown(layout, repo_root, pr)?;
+        teardown(layout, repo_root, ws_name)?;
     }
     fs::create_dir_all(&layout.info)
         .with_context(|| format!("creating info dir {}", layout.info.display()))?;
@@ -76,29 +78,27 @@ pub fn prepare(layout: &Layout, repo_root: &Path, pr: u64, force: bool) -> Resul
     Ok(())
 }
 
-/// Remove this PR's folders + jj workspace if they exist. Returns whether
+/// Remove this bundle's folders + jj workspace if they exist. Returns whether
 /// anything was actually removed (so the CLI can report a no-op).
-pub fn clean(layout: &Layout, repo_root: &Path, pr: u64) -> Result<bool> {
-    let name = workspace_name(pr);
+pub fn clean(layout: &Layout, repo_root: &Path, ws_name: &str) -> Result<bool> {
     let had_workspace = jj::workspace_names(repo_root)
-        .map(|names| names.iter().any(|n| n == &name))
+        .map(|names| names.iter().any(|n| n == ws_name))
         .unwrap_or(false);
     let had_files = layout.exists() || layout.workspace.exists();
     if !had_workspace && !had_files {
         return Ok(false);
     }
-    teardown(layout, repo_root, pr)?;
+    teardown(layout, repo_root, ws_name)?;
     Ok(true)
 }
 
-/// Remove a prior PR folder + jj workspace.
-fn teardown(layout: &Layout, repo_root: &Path, pr: u64) -> Result<()> {
-    let name = workspace_name(pr);
+/// Remove a prior bundle folder + jj workspace.
+fn teardown(layout: &Layout, repo_root: &Path, ws_name: &str) -> Result<()> {
     if jj::workspace_names(repo_root)
-        .map(|names| names.iter().any(|n| n == &name))
+        .map(|names| names.iter().any(|n| n == ws_name))
         .unwrap_or(false)
     {
-        jj::workspace_forget(repo_root, &name)?;
+        jj::workspace_forget(repo_root, ws_name)?;
     }
     for root in &layout.roots {
         if root.exists() {

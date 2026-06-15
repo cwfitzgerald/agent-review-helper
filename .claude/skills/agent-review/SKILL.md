@@ -1,14 +1,15 @@
 ---
 name: agent-review
 description: >
-  Locally review a GitHub PR by number using the agent-review-helper tool.
-  Use when the user asks to review / onboard to a specific PR number in the
-  current repo (e.g. "review 8967", "let's look at PR #8967", "onboard me to
-  8967"), especially in wgpu or other jj-managed Rust repos. This skill runs
-  the agent-review-helper binary to gather a self-contained review bundle
-  (diffs + full chronological conversation + a checked-out workspace), then
-  reviews from that bundle. Prefer this over ad-hoc gh/jj calls when a PR
-  number is given.
+  Locally review a GitHub PR by number, or a local jj revision range, using the
+  agent-review-helper tool. Use when the user asks to review / onboard to a
+  specific PR number (e.g. "review 8967", "onboard me to 8967") OR to review a
+  local changeset / revision range (e.g. "review my changes", "onboard me to
+  trunk..@", "what does this changeset do"), especially in wgpu or other
+  jj-managed Rust repos. This skill runs the agent-review-helper binary to gather
+  a self-contained review bundle (diffs + conversation for PRs + a checked-out
+  workspace), then reviews from that bundle. Prefer this over ad-hoc gh/jj calls
+  when a PR number or revision range is given.
 ---
 
 # Local PR Review via agent-review-helper
@@ -25,11 +26,27 @@ unsafe Rust.
 ## Step 1 — Gather the bundle
 
 Run the tool from the repo the user is in (the working directory is already the
-target repo). `$ARGUMENTS` is the PR number.
+target repo).
+
+**PR review** (`$ARGUMENTS` is the PR number):
 
 ```
 agent-review-helper <PR>
 ```
+
+**Local revision range** (no GitHub — for reviewing uncommitted/unmerged local
+work or any `from..to` span). Map the user's request to `-f`/`-t`: e.g. "review
+my changes" → `-f trunk -t @`; "review this PR's worth of work" → the bookmark
+range they name. `-t` defaults to `@`.
+
+```
+agent-review-helper range -f <from> -t <to>
+```
+
+This bundle (default `.agent-review/range-<from>-<to>/info/`) has `range.diff`,
+`commits.txt` (the range's commit log — use it for the review order), the
+manifest `README.md`, and a workspace checked out at `<to>`. There is **no**
+`conversation.md` / `upstream.diff` (no PR). Skip those steps below for ranges.
 
 - It prints `info:` and `workspace:` paths on success — note them.
 - If it reports the bundle already exists and the user wants a fresh pull, re-run
@@ -65,9 +82,10 @@ recompiling everything. The exact value is in the bundle `README.md` under
 
 ## Step 2 — Review
 
-Read `README.md`, then `conversation.md`, then `pr-diff.diff`. Read from these
-files — do **not** re-issue `gh`/`jj` calls for data already in the bundle. For
-large diffs, spawn **foreground** sub-agents split by subsystem or concern.
+Read `README.md`, then `conversation.md`, then `pr-diff.diff` (for a range:
+`README.md` → `commits.txt` → `range.diff`). Read from these files — do **not**
+re-issue `gh`/`jj` calls for data already in the bundle. For large diffs, spawn
+**foreground** sub-agents split by subsystem or concern.
 
 Then present, in this order:
 
@@ -81,6 +99,7 @@ Then present, in this order:
 5. **Testing** — what's tested, what's not, whether tests verify the invariants
    that matter.
 6. **Commentary summary** — what was debated in the conversation; what's unresolved.
+   (PR only — skip for a range, which has no conversation.)
 7. **Review order** (mandatory) — an ordered reading plan (commit-by-commit if the
    PR is structured that way, otherwise file-by-file) with a one-line rationale each.
 
@@ -104,10 +123,12 @@ command to update to the latest after the tool changes.
 
 ## Cleaning up
 
-When the user is done with a PR, tear down its workspace + artifacts:
+When the user is done, tear down the workspace + artifacts (pass the same
+arguments plus `--clean`):
 
 ```
 agent-review-helper <PR> --clean
+agent-review-helper range -f <from> -t <to> --clean
 ```
 
 This forgets the jj workspace and removes the bundle folder. It does no network
@@ -116,6 +137,7 @@ tool added are left in place (harmless and reused on future runs).
 
 ## Notes
 
-- The tool needs to run inside a jj repo with a remote pointing at the PR's base
-  repo (`origin` or `upstream`). If the user is in the wrong directory, say so.
-- To inspect a different PR, just run the tool again with that number.
+- PR mode needs a jj repo with a remote pointing at the PR's base repo (`origin`
+  or `upstream`). Range mode is fully local — any jj repo works. If the user is
+  in the wrong directory, say so.
+- To inspect a different PR or range, just run the tool again with new arguments.

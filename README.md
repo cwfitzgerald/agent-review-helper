@@ -1,8 +1,10 @@
 # agent-review-helper
 
-A small Rust CLI that prepares a self-contained folder of PR review artifacts for
-an LLM, so I can review pull requests locally without feeding the model a pile of
-unneeded context. Run it from inside a target repo:
+A small Rust CLI that prepares a self-contained folder of review artifacts for an
+LLM, so I can review changes locally without feeding the model a pile of unneeded
+context. Run it from inside a target repo.
+
+**Review a GitHub PR:**
 
 ```
 agent-review-helper 8967
@@ -18,10 +20,21 @@ It creates a `jj` workspace at the PR head and gathers, into
 - `README.md` — a manifest tying it together, plus the workspace path for building
   / navigating the full checkout.
 
-When you're done, tear down the workspace and bundle:
+**Review a local revision range** (no GitHub, no network):
+
+```
+agent-review-helper range -f <from> -t <to>     # -t defaults to @
+```
+
+This checks out `<to>` in a workspace and gathers `range.diff`
+(`jj diff -f <from> -t <to>`) + `commits.txt` (the range's commit log) into
+`.agent-review/range-<from>-<to>/info/`.
+
+When you're done, tear down the workspace and bundle (works for either mode):
 
 ```
 agent-review-helper 8967 --clean
+agent-review-helper range -f <from> -t <to> --clean
 ```
 
 It pairs with a Claude Code skill (`agent-review`) that runs the binary and reviews

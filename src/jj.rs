@@ -89,3 +89,32 @@ pub fn pr_diff(workspace: &Path) -> Result<String> {
     run("jj", &["pr-diff", "--git", "--no-pager"], Some(workspace))
         .context("running `jj pr-diff` in the PR workspace")
 }
+
+/// Git-format diff of a revision range (`jj diff -f <from> -t <to>`).
+pub fn diff_range(root: &Path, from: &str, to: &str) -> Result<String> {
+    run("jj", &["diff", "--git", "--no-pager", "-f", from, "-t", to], Some(root))
+        .with_context(|| format!("running `jj diff -f {from} -t {to}`"))
+}
+
+/// Commit log of the revisions in `from..to` (those reachable from `to` but not
+/// `from`), so the reviewer sees the change's commit structure.
+pub fn log_range(root: &Path, from: &str, to: &str) -> Result<String> {
+    let revset = format!("{from}..{to}");
+    run("jj", &["log", "--no-pager", "-r", &revset], Some(root))
+        .with_context(|| format!("running `jj log -r {revset}`"))
+}
+
+/// Resolve a revision to a short (12-char) commit id, for stable bundle naming.
+pub fn commit_id(root: &Path, rev: &str) -> Result<String> {
+    let out = run(
+        "jj",
+        &["log", "--no-graph", "--no-pager", "-r", rev, "-T", "commit_id"],
+        Some(root),
+    )
+    .with_context(|| format!("resolving revision `{rev}`"))?;
+    let id = out.lines().next().unwrap_or("").trim();
+    if id.is_empty() {
+        anyhow::bail!("revision `{rev}` did not resolve to a commit");
+    }
+    Ok(id.chars().take(12).collect())
+}

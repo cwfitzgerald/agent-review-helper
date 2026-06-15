@@ -8,8 +8,6 @@ use anyhow::{Context, Result};
 use clap::ValueEnum;
 use std::path::{Path, PathBuf};
 
-use crate::repo::RepoRef;
-
 /// Storage strategy. The CLI default is [`Storage::InRepo`]; the others exist so
 /// we can move the (large) workspace out of the repo tree without touching any
 /// gather code.
@@ -37,12 +35,15 @@ pub struct Layout {
 }
 
 impl Layout {
-    pub fn resolve(strategy: Storage, repo_root: &Path, repo: &RepoRef, pr: u64) -> Result<Self> {
-        let in_repo_root = repo_root.join(".agent-review").join(format!("pr-{pr}"));
+    /// Resolve paths for one bundle. `namespace` is the per-repo cache subdir
+    /// (e.g. `owner-repo`), `bundle` is the per-change folder (e.g. `pr-9464` or
+    /// `range-<from>-<to>`).
+    pub fn resolve(strategy: Storage, repo_root: &Path, namespace: &str, bundle: &str) -> Result<Self> {
+        let in_repo_root = repo_root.join(".agent-review").join(bundle);
         let cache_root = cache_dir()?
             .join("agent-review-helper")
-            .join(format!("{}-{}", repo.owner, repo.repo))
-            .join(format!("pr-{pr}"));
+            .join(namespace)
+            .join(bundle);
 
         let layout = match strategy {
             Storage::InRepo => Layout {
