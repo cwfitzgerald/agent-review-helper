@@ -23,6 +23,13 @@ from the produced bundle. The user is a graphics engineer working mainly on
 wgpu/GPU Rust; assume familiarity with graphics pipelines, GPU APIs, async, and
 unsafe Rust.
 
+The goal is not a summary — it is to make the user **ready to comment on the
+PR**. Every review should leave the user able to (a) understand the change
+deeply enough to defend or challenge it, and (b) raise precise, well-supported
+concerns. Bias toward thoroughness over speed: read every changed file, follow
+the code into the surrounding workspace, and verify claims rather than trusting
+them. A shallow-but-fast review is a failure even if it sounds confident.
+
 ## Step 1 — Gather the bundle
 
 Run the tool from the repo the user is in (the working directory is already the
@@ -80,12 +87,54 @@ recompiling everything. The exact value is in the bundle `README.md` under
 `$env:CARGO_TARGET_DIR='<root>/target'; cargo nextest run`, or bash
 `CARGO_TARGET_DIR=<root>/target cargo build`.
 
-## Step 2 — Review
+## Step 2 — Suggest a session title
+
+A session named after the PR is much easier to find later. **You cannot rename
+the session yourself** — slash commands only run when the *user* types them; a
+`/rename` you emit is inert text. So instead, as soon as you know the PR title
+(from `README.md`), surface the exact command prominently near the top of your
+first response and ask the user to run it:
+
+> **Suggested session name** — run: `/rename Review 8967: bind group layout dedup`
+
+Format: `Review <PR>: <topic>`, where `<topic>` is a short (3–6 word) summary
+derived from the PR title. For **range mode** (no PR number) use
+`Review range: <topic>` (e.g. `/rename Review range: shadow map filtering fixes`).
+Surface it once; don't nag if the user skips it.
+
+## Step 3 — Review
 
 Read `README.md`, then `conversation.md`, then `pr-diff.diff` (for a range:
 `README.md` → `commits.txt` → `range.diff`). Read from these files — do **not**
 re-issue `gh`/`jj` calls for data already in the bundle. For large diffs, spawn
 **foreground** sub-agents split by subsystem or concern.
+
+Be thorough: read **every** changed file in full, not just the diff hunks — a
+hunk rarely tells you whether the surrounding code still holds. Follow callers
+and callees into the workspace to understand how the change behaves in context.
+Do not present a finding you have not grounded in the actual code.
+
+### Validate every bug before presenting it (mandatory)
+
+You may **not** present a suspected bug, regression, or correctness concern until
+you have validated it against the real code in the checked-out workspace. For
+each candidate finding:
+
+1. Open the actual file(s) in the `workspace:` path and trace the real control
+   flow / types / lifetimes — confirm the bug is reachable and the conditions
+   that trigger it genuinely hold. Many "bugs" evaporate once you read the code
+   around the hunk.
+2. Where feasible, **prove it**: write or point to a failing test, construct a
+   concrete repro, or build/run the relevant code (`cargo nextest` / `cargo
+   build` / `cargo clippy`, with `CARGO_TARGET_DIR` set as described above). Use
+   foreground sub-agents to parallelize verification across findings.
+3. Only findings you have confirmed make it into the **Risk areas** list. If a
+   concern is plausible but you could not confirm it, either drop it or list it
+   **separately and explicitly labeled `unverified`**, with what would be needed
+   to confirm. Never let an unverified hunch masquerade as a confirmed bug.
+
+State *how* each confirmed bug was validated (code path traced, test run, repro
+built) so the user can trust it when commenting.
 
 Then present, in this order:
 
@@ -94,8 +143,10 @@ Then present, in this order:
    if complex.
 3. **Key decisions** — design choices, alternatives, anything chosen for
    convenience over correctness.
-4. **Risk areas** — likely bugs, edge cases, regressions, maintenance burdens. Be
-   adversarial; assume problems exist and find them.
+4. **Risk areas** — confirmed bugs, edge cases, regressions, maintenance burdens.
+   Be adversarial; assume problems exist and find them. Every item here must have
+   passed the validation gate above — note how each was confirmed. List any
+   plausible-but-unconfirmed concerns in a separate `unverified` subsection.
 5. **Testing** — what's tested, what's not, whether tests verify the invariants
    that matter.
 6. **Commentary summary** — what was debated in the conversation; what's unresolved.
@@ -103,11 +154,28 @@ Then present, in this order:
 7. **Review order** (mandatory) — an ordered reading plan (commit-by-commit if the
    PR is structured that way, otherwise file-by-file) with a one-line rationale each.
 
-## Step 3 — Interactive
+## Step 4 — Interactive & comment prep
 
-Ask the user about their focus and desired depth before and during. Be direct;
-don't hedge. When they raise a concern, help phrase it precisely for a review
-comment. Over-communicate and over-question — the user wants to stay in control.
+**Always deliver the complete report first.** Do **not** open by asking "where do
+you want to focus?" or otherwise gate the review on the user's input — they want
+the full, thorough report covering every section above, with all bugs already
+validated, before any back-and-forth. Review the whole change; never scope it
+down preemptively. Be direct; don't hedge.
+
+Only **after** the complete report is on the table, go interactive to drive
+toward PR comments. The end goal is comments on the PR. Actively help the user
+get there:
+
+- For each confirmed risk area, offer a **ready-to-post comment**: the precise
+  `file:line` anchor (from the bundle), a crisp statement of the problem, the
+  evidence that validated it, and a concrete suggested fix or question for the
+  author. Phrase it as the user would post it, not as a description of the issue.
+- When the user raises their own concern, help sharpen it the same way — anchor,
+  evidence, suggestion — and validate it against the code before wording it.
+- Distinguish blocking issues from nits/suggestions so the user knows what to
+  insist on versus mention.
+- Surface the open questions worth asking the author (ambiguities, missing tests,
+  unstated assumptions) as draft comment text.
 
 ## Installing / updating
 
