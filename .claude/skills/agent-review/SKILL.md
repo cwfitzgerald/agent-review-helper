@@ -87,22 +87,7 @@ recompiling everything. The exact value is in the bundle `README.md` under
 `$env:CARGO_TARGET_DIR='<root>/target'; cargo nextest run`, or bash
 `CARGO_TARGET_DIR=<root>/target cargo build`.
 
-## Step 2 — Suggest a session title
-
-A session named after the PR is much easier to find later. **You cannot rename
-the session yourself** — slash commands only run when the *user* types them; a
-`/rename` you emit is inert text. So instead, as soon as you know the PR title
-(from `README.md`), surface the exact command prominently near the top of your
-first response and ask the user to run it:
-
-> **Suggested session name** — run: `/rename Review 8967: bind group layout dedup`
-
-Format: `Review <PR>: <topic>`, where `<topic>` is a short (3–6 word) summary
-derived from the PR title. For **range mode** (no PR number) use
-`Review range: <topic>` (e.g. `/rename Review range: shadow map filtering fixes`).
-Surface it once; don't nag if the user skips it.
-
-## Step 3 — Review
+## Step 2 — Review
 
 Read `README.md`, then `conversation.md`, then `pr-diff.diff` (for a range:
 `README.md` → `commits.txt` → `range.diff`). Read from these files — do **not**
@@ -154,7 +139,7 @@ Then present, in this order:
 7. **Review order** (mandatory) — an ordered reading plan (commit-by-commit if the
    PR is structured that way, otherwise file-by-file) with a one-line rationale each.
 
-## Step 4 — Interactive & comment prep
+## Step 3 — Interactive & comment prep
 
 **Always deliver the complete report first.** Do **not** open by asking "where do
 you want to focus?" or otherwise gate the review on the user's input — they want
