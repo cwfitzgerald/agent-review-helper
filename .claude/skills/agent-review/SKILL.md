@@ -2,14 +2,12 @@
 name: agent-review
 description: >
   Locally review a GitHub PR by number, or a local jj revision range, using the
-  agent-review-helper tool. Use when the user asks to review / onboard to a
-  specific PR number (e.g. "review 8967", "onboard me to 8967") OR to review a
-  local changeset / revision range (e.g. "review my changes", "onboard me to
-  trunk..@", "what does this changeset do"), especially in wgpu or other
-  jj-managed Rust repos. This skill runs the agent-review-helper binary to gather
-  a self-contained review bundle (diffs + conversation for PRs + a checked-out
-  workspace), then reviews from that bundle. Prefer this over ad-hoc gh/jj calls
-  when a PR number or revision range is given.
+  agent-review-helper tool. Use only when the user explicitly invokes or names
+  the `agent-review` skill (for example, `$agent-review`, `/agent-review`, or
+  "use the agent-review skill"). Do not trigger for generic requests to review
+  or onboard to a PR, changeset, revision range, or working-copy changes. This
+  skill gathers a self-contained review bundle (diffs + conversation for PRs +
+  a checked-out workspace), then reviews from that bundle.
 ---
 
 # Local PR Review via agent-review-helper
