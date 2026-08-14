@@ -16,17 +16,19 @@ description: >
 
 `agent-review-helper` is a Rust CLI that prepares everything needed to review a
 PR — with **no extra unneeded context** — and checks the PR out into a jj
-workspace. This skill runs it, then performs an adversarial, high-detail review
-from the produced bundle. The user is a graphics engineer working mainly on
-wgpu/GPU Rust; assume familiarity with graphics pipelines, GPU APIs, async, and
-unsafe Rust.
+workspace. This skill runs it, then reviews the change from the produced bundle.
 
-The goal is not a summary — it is to make the user **ready to comment on the
-PR**. Every review should leave the user able to (a) understand the change
-deeply enough to defend or challenge it, and (b) raise precise, well-supported
-concerns. Bias toward thoroughness over speed: read every changed file, follow
-the code into the surrounding workspace, and verify claims rather than trusting
-them. A shallow-but-fast review is a failure even if it sounds confident.
+This is a review, not an onboarding or a summary. Output is findings: defects,
+unsupported claims, and machine-generated slop, each grounded in the actual
+code. Explanation of the change earns only a short preamble; everything after it
+must be something wrong or something the reader has to decide about. Bias toward
+thoroughness over speed — read every changed file, follow the code into the
+surrounding workspace, verify rather than trust. A shallow-but-fast review is a
+failure even if it sounds confident.
+
+The reader is a graphics engineer working mainly on wgpu/GPU Rust. Assume
+fluency in graphics pipelines, GPU APIs, async, and unsafe Rust; never explain
+language or domain basics.
 
 ## Step 1 — Gather the bundle
 
@@ -85,80 +87,144 @@ recompiling everything. The exact value is in the bundle `README.md` under
 `$env:CARGO_TARGET_DIR='<root>/target'; cargo nextest run`, or bash
 `CARGO_TARGET_DIR=<root>/target cargo build`.
 
-## Step 2 — Review
+## Step 2 — Read
 
 Read `README.md`, then `conversation.md`, then `pr-diff.diff` (for a range:
 `README.md` → `commits.txt` → `range.diff`). Read from these files — do **not**
 re-issue `gh`/`jj` calls for data already in the bundle. For large diffs, spawn
 **foreground** sub-agents split by subsystem or concern.
 
-Be thorough: read **every** changed file in full, not just the diff hunks — a
-hunk rarely tells you whether the surrounding code still holds. Follow callers
-and callees into the workspace to understand how the change behaves in context.
-Do not present a finding you have not grounded in the actual code.
+Read **every** changed file in full, not just the diff hunks — a hunk rarely
+tells you whether the surrounding code still holds. Follow callers and callees
+into the workspace. Never present a finding you have not grounded in the actual
+code.
 
-### Validate every bug before presenting it (mandatory)
+## Step 3 — What to hunt for
 
-You may **not** present a suspected bug, regression, or correctness concern until
-you have validated it against the real code in the checked-out workspace. For
-each candidate finding:
+Assume the change is wrong somewhere and go find it. Three lenses, applied to
+every changed file.
+
+### Correctness
+
+Real defects, in roughly descending order of what actually bites: wrong control
+flow, off-by-one and boundary handling, integer/float conversion and overflow,
+error paths that lose or mistranslate the error, resource lifetime (drop order,
+leaked handles, use-after-free reasoning in `unsafe`), aliasing and `Send`/`Sync`
+claims, race windows and lock scope, panics reachable from non-panicking APIs,
+and behavior changes to callers the diff never touched. Search for the case the
+author did not have in mind — empty input, single element, the maximum, the
+concurrent second caller, the error branch nobody runs.
+
+### Assertions — code
+
+- Invariants relied on but never asserted. If a function's correctness needs
+  `x < len` and nothing checks it, that is a finding.
+- Assertions that do not hold, are unreachable, or are weaker than the invariant
+  they claim to guard (`assert!(!v.is_empty())` where the real requirement is a
+  specific length).
+- `unwrap`/`expect`/`unreachable!`/`unsafe` blocks whose stated justification no
+  longer follows from the surrounding code — check each one against the current
+  control flow, not the comment.
+- `debug_assert!` guarding something that must hold in release too.
+
+### Assertions — claims
+
+Every claim in the PR description, commit messages, doc comments, inline
+comments, and review replies is a hypothesis to test against the code. Flag any
+that the code does not support: "this is now O(n)", "safe because the caller
+holds the lock", "no behavior change", "fixes #123", "the previous code leaked
+here". Author confidence is not evidence. A comment that was true before the
+change and is false after it is a defect, not a nit.
+
+### LLM-isms
+
+Machine-generated code has tells, and the tells cluster around real bugs. Flag
+them on their own merits, and follow each one to see whether it is hiding a
+defect:
+
+- **Comment noise** — comments restating the line below, docstrings paraphrasing
+  the signature, section banners over three lines of code.
+- **Stale naming and comments** — identifiers or comments describing an earlier
+  draft of the code. Often the fastest route to a real bug.
+- **Defensive code for impossible states** — `None`/null checks on a value
+  already narrowed, bounds checks after an indexing operation, error branches
+  unreachable by construction. Either it is dead code or the invariant does not
+  actually hold — determine which.
+- **Invented compatibility** — deprecation shims, aliases, or migration paths for
+  an API that never shipped.
+- **Single-caller abstraction** — a trait, builder, config struct, or helper
+  introduced with exactly one use site and no stated plan for a second.
+- **Copy-paste with a missed substitution** — near-identical blocks differing by
+  one identifier. Diff them character by character; the missed rename is a
+  classic and is a genuine bug.
+- **Reimplementation** — logic that already exists elsewhere in the workspace,
+  rewritten instead of called. Search for the existing version before accepting a
+  new helper.
+- **Symmetry padding** — a setter added because a getter exists, enum variants or
+  match arms nothing constructs, parameters no caller passes.
+- **Lint silencing** — `#[allow]`, broad `catch`, or `unwrap_or_default()` added
+  to quiet a diagnostic rather than address it.
+- **Tautological tests** — a test that asserts the mock's return value, restates
+  the implementation, or exercises the language rather than the code.
+- **Prose tells** in user-facing text, changelogs, and commit messages —
+  "comprehensive", "robust", "seamlessly", bullet lists that restate the diff.
+
+### Tests
+
+Whether the tests verify the invariants that matter, not whether coverage went
+up. Name the specific untested path or unasserted invariant; "add more tests" is
+not a finding.
+
+## Step 4 — Validate before presenting (mandatory)
+
+No suspected defect, regression, or correctness concern may appear as confirmed
+until validated against the real code in the checked-out workspace:
 
 1. Open the actual file(s) in the `workspace:` path and trace the real control
-   flow / types / lifetimes — confirm the bug is reachable and the conditions
-   that trigger it genuinely hold. Many "bugs" evaporate once you read the code
-   around the hunk.
-2. Where feasible, **prove it**: write or point to a failing test, construct a
-   concrete repro, or build/run the relevant code (`cargo nextest` / `cargo
-   build` / `cargo clippy`, with `CARGO_TARGET_DIR` set as described above). Use
+   flow / types / lifetimes — confirm the bug is reachable and its triggering
+   conditions genuinely hold. Many "bugs" evaporate once you read the code around
+   the hunk.
+2. Where feasible, **prove it**: point to or write a failing test, construct a
+   repro, or build/run the relevant code (`cargo nextest` / `cargo build` /
+   `cargo clippy`, with `CARGO_TARGET_DIR` set as described above). Use
    foreground sub-agents to parallelize verification across findings.
-3. Only findings you have confirmed make it into the **Risk areas** list. If a
-   concern is plausible but you could not confirm it, either drop it or list it
-   **separately and explicitly labeled `unverified`**, with what would be needed
-   to confirm. Never let an unverified hunch masquerade as a confirmed bug.
+3. Plausible-but-unconfirmed concerns are either dropped or listed **separately
+   under `unverified`**, with what would be needed to confirm. Never let a hunch
+   masquerade as a confirmed bug.
 
-State *how* each confirmed bug was validated (code path traced, test run, repro
-built) so the user can trust it when commenting.
+State *how* each confirmed finding was validated (path traced, test run, repro
+built).
 
-Then present, in this order:
+The gate applies to correctness and assertion findings. LLM-isms are judged by
+reading — but the moment one implies a behavioral bug, that bug goes through the
+gate like any other.
 
-1. **Goal & motivation** — what the change accomplishes and why.
-2. **Architecture / flow** — execution path or structural reorganization; diagram
-   if complex.
-3. **Key decisions** — design choices, alternatives, anything chosen for
-   convenience over correctness.
-4. **Risk areas** — confirmed bugs, edge cases, regressions, maintenance burdens.
-   Be adversarial; assume problems exist and find them. Every item here must have
-   passed the validation gate above — note how each was confirmed. List any
-   plausible-but-unconfirmed concerns in a separate `unverified` subsection.
-5. **Testing** — what's tested, what's not, whether tests verify the invariants
-   that matter.
-6. **Commentary summary** — what was debated in the conversation; what's unresolved.
-   (PR only — skip for a range, which has no conversation.)
-7. **Review order** (mandatory) — an ordered reading plan (commit-by-commit if the
-   PR is structured that way, otherwise file-by-file) with a one-line rationale each.
+## Step 5 — Report
 
-## Step 3 — Interactive & comment prep
+Deliver the whole report in one pass. Do **not** open by asking where to focus,
+and do not scope the review down preemptively. Be direct; don't hedge. Findings
+carry a `file:line` anchor from the bundle so they can be acted on directly.
 
-**Always deliver the complete report first.** Do **not** open by asking "where do
-you want to focus?" or otherwise gate the review on the user's input — they want
-the full, thorough report covering every section above, with all bugs already
-validated, before any back-and-forth. Review the whole change; never scope it
-down preemptively. Be direct; don't hedge.
+1. **Preamble** — a few lines: what the change does and how it is structured.
+   Enough to make the findings legible, no more. No motivation essay, no
+   architecture tour unless a diagram is genuinely required to state a finding.
+2. **Correctness** — confirmed defects, most severe first. Anchor, what breaks,
+   the input or state that triggers it, how it was validated.
+3. **Assertions** — missing or wrong invariant checks, and claims the code does
+   not support. Quote the claim, then what the code does.
+4. **LLM-isms** — machine-generated slop, and for each whether it is cosmetic or
+   points at a defect above.
+5. **Tests** — invariants that matter and go unverified.
+6. **Unverified** — plausible concerns that did not pass the gate, and what would
+   settle each.
+7. **Unresolved in conversation** — points still contested or unanswered by the
+   author. One line each. (PR only; a range has no conversation.)
+8. **Review order** (mandatory) — an ordered reading plan, commit-by-commit if the
+   PR is structured that way, otherwise file-by-file, with a one-line rationale
+   each. Order for comprehension: the change that defines the new shape first,
+   then what depends on it, mechanical churn last.
 
-Only **after** the complete report is on the table, go interactive to drive
-toward PR comments. The end goal is comments on the PR. Actively help the user
-get there:
-
-- For each confirmed risk area, offer a **ready-to-post comment**: the precise
-  `file:line` anchor (from the bundle), a crisp statement of the problem, the
-  evidence that validated it, and a concrete suggested fix or question for the
-  author. Phrase it as the user would post it, not as a description of the issue.
-- When the user raises their own concern, help sharpen it the same way — anchor,
-  evidence, suggestion — and validate it against the code before wording it.
-- Distinguish blocking issues from nits/suggestions so the user knows what to
-  insist on versus mention.
-- Surface the open questions worth asking the author (ambiguities, missing tests,
-  unstated assumptions) as draft comment text.
+Omit any section with nothing in it, except the preamble and review order.
 
 ## Installing / updating
 
